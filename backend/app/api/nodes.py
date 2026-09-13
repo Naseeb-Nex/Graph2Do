@@ -8,11 +8,11 @@ router = APIRouter()
 
 # Note: Add Auth dependency when frontend holds JWT bearer auth
 
-@router.get("/nodes", response_model=Any)
+@router.get("/", response_model=Any)
 def get_nodes(db: Session = Depends(get_db)):
     return db.query(Node).all()
 
-@router.post("/nodes")
+@router.post("/")
 def create_node(title: str, db: Session = Depends(get_db)):
     node = Node(title=title)
     db.add(node)
