@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
 from kinde_sdk import create_oauth_client
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from app.core.config import settings
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 kinde_client = create_oauth_client(
     host=settings.kinde_domain,
@@ -15,6 +18,7 @@ kinde_client = create_oauth_client(
 )
 
 @router.get("/login")
+@limiter.limit("10/minute")
 def login():
     try:
         url = kinde_client.get_login_url()
@@ -23,6 +27,7 @@ def login():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/register")
+@limiter.limit("10/minute")
 def register():
     try:
         url = kinde_client.get_register_url()
@@ -31,14 +36,16 @@ def register():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/callback")
+@limiter.limit("20/minute")
 def callback(request: Request):
     try:
-        kinde_client.fetch_token(request.url._url)
+        kinde_client.fetch_token(str(request.url))
         return {"message": "Successfully authenticated with Kinde"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/logout")
+@limiter.limit("10/minute")
 def logout():
     try:
         url = kinde_client.logout(redirect_to="http://localhost:8000")
