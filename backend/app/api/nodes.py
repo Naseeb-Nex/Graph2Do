@@ -8,7 +8,7 @@ from app.api.auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/", response_model=Any)
+@router.get("/")
 def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     return db.query(Node).filter(Node.user_id == user_id).all()
