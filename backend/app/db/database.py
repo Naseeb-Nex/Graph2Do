@@ -10,7 +10,7 @@ engine = create_engine(
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,
-    connect_args={"sslmode": "require", "channel_binding": "require"},
+    connect_args={} if 'sqlite' in settings.database_url else {"sslmode": "require", "channel_binding": "require"},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
