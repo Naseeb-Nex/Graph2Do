@@ -1,5 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, JSON
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String
+
 from app.db.database import Base
+
 
 class Node(Base):
     __tablename__ = "nodes"
@@ -10,6 +12,7 @@ class Node(Base):
     description = Column(String, nullable=True)
     completed = Column(Boolean, default=False)
     data = Column(JSON, nullable=True)
+
 
 class Edge(Base):
     __tablename__ = "edges"

@@ -1,17 +1,15 @@
 """Tests for auth guards (audience verification) and node isolation."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from starlette.testclient import TestClient
+from app.api.auth import get_current_user
+from app.db.database import Base, get_db
+from app.main import app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.main import app
-from app.db.database import Base, get_db
-from app.api.auth import get_current_user
-from app.models.graph import Node, Edge
-
+from starlette.testclient import TestClient
 
 # In-memory SQLite for node isolation tests
 engine = create_engine(
@@ -34,6 +32,7 @@ def override_db():
 def make_user_override(sub: str):
     def override():
         return {"sub": sub}
+
     return override
 
 
@@ -89,8 +88,8 @@ class TestAudienceVerification:
         with patch("app.api.auth.jwt.decode") as mock_decode:
             mock_decode.side_effect = pyjwt.InvalidAudienceError("Invalid audience")
 
-            from fastapi import HTTPException
             from app.api.auth import get_current_user
+            from fastapi import HTTPException
 
             creds = MagicMock()
             creds.credentials = "wrong.audience.token"
@@ -141,7 +140,7 @@ class TestLogoutEndpoint:
     @patch("app.api.auth.kinde_client")
     def test_logout_redirects(self, mock_kinde):
         """GET /auth/logout returns a redirect to the Kinde logout URL."""
-        mock_kinde.get_logout_url.return_value = "https://dummy.kinde.com/logout"
+        mock_kinde.logout.return_value = "https://dummy.kinde.com/logout"
         c = TestClient(app, follow_redirects=False)
         resp = c.get("/auth/logout")
         assert resp.status_code in (302, 307)
