@@ -30,7 +30,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
             token,
             signing_key.key,
             algorithms=["RS256"],
-            options={"verify_aud": False},
+            audience=settings.kinde_client_id,
         )
         return payload
     except Exception as e:
@@ -54,3 +54,8 @@ def callback(request: Request):
         return RedirectResponse(settings.frontend_url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/logout")
+@limiter.limit("10/minute")
+def logout(request: Request):
+    return RedirectResponse(kinde_client.get_logout_url())

@@ -8,13 +8,15 @@ from app.api.auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/", response_model=Any, dependencies=[Depends(get_current_user)])
-def get_nodes(db: Session = Depends(get_db)):
-    return db.query(Node).all()
+@router.get("/", response_model=Any)
+def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    return db.query(Node).filter(Node.user_id == user_id).all()
 
-@router.post("/", dependencies=[Depends(get_current_user)])
-def create_node(title: str, db: Session = Depends(get_db)):
-    node = Node(title=title)
+@router.post("/")
+def create_node(title: str, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    node = Node(title=title, user_id=user_id)
     db.add(node)
     db.commit()
     db.refresh(node)
