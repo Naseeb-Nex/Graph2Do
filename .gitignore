@@ -2,3 +2,6 @@ backend/.env
 __pycache__/
 venv/
 *.pyc
+backend/server.log
+backend/test.db
+frontend/node_modules/
