@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.models.graph import Node, Edge
+from app.models.graph import Node
 from typing import Any
 
 from app.api.auth import get_current_user

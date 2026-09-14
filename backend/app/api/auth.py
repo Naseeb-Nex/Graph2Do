@@ -1,5 +1,5 @@
 import jwt
-from fastapi import APIRouter, HTTPException, Request, Depends, Security
+from fastapi import APIRouter, HTTPException, Request, Security
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from kinde_sdk import create_oauth_client
