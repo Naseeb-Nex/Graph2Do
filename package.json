@@ -1,0 +1,11 @@
+{
+  "name": "graph2do",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend test && pytest backend/tests",
+    "test:frontend": "npm --prefix frontend test",
+    "test:backend": "pytest backend/tests"
+  }
+}

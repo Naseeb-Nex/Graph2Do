@@ -1,0 +1,1 @@
+status=200 body={"message":"Welcome to Graph2Do API. Check /docs for more info."}

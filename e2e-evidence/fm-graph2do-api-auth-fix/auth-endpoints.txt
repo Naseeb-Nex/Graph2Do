@@ -1,0 +1,3 @@
+GET /auth/login => 307 Location=%3Ccoroutine%20object%20OAuth.login%20at%200x10afeb010%3E
+GET /auth/register => 307 Location=%3Ccoroutine%20object%20OAuth.register%20at%200x10caa88b0%3E
+GET /auth/logout => 307 Location=%3Ccoroutine%20object%20OAuth.logout%20at%200x10ca0f340%3E
