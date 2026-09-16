@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Optional, List, Dict
 from app.db.database import get_db
 from app.models.graph import Node, Edge
-from app.api.auth import verify_token
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
@@ -31,9 +31,10 @@ class AIActionRequest(BaseModel):
     message: Optional[str] = None
     graph_context: Optional[Dict[str, Any]] = None
 
-@router.get("/", response_model=List[Dict[str, Any]], dependencies=[Depends(verify_token)])
-def get_nodes(db: Session = Depends(get_db)):
-    nodes = db.query(Node).all()
+@router.get("/", response_model=List[Dict[str, Any]])
+def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    nodes = db.query(Node).filter(Node.user_id == user_id).all()
     return [
         {
             "id": n.id,
@@ -41,14 +42,19 @@ def get_nodes(db: Session = Depends(get_db)):
             "description": n.description,
             "completed": n.completed,
             "data": n.data or {},
+            "user_id": n.user_id,
         }
         for n in nodes
     ]
 
-@router.get("/graph/full", dependencies=[Depends(verify_token)])
-def get_full_graph(db: Session = Depends(get_db)):
-    nodes = db.query(Node).all()
-    edges = db.query(Edge).all()
+@router.get("/graph/full")
+def get_full_graph(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    nodes = db.query(Node).filter(Node.user_id == user_id).all()
+    node_ids = {n.id for n in nodes}
+    
+    edges = db.query(Edge).join(Node, Node.id == Edge.source_id).filter(Node.user_id == user_id).all()
+    
     return {
         "nodes": [
             {
@@ -67,13 +73,14 @@ def get_full_graph(db: Session = Depends(get_db)):
                 "target_id": e.target_id,
                 "label": e.label,
             }
-            for e in edges
+            for e in edges if e.target_id in node_ids
         ],
     }
 
-@router.get("/{node_id}", dependencies=[Depends(verify_token)])
-def get_node(node_id: int, db: Session = Depends(get_db)):
-    node = db.query(Node).filter(Node.id == node_id).first()
+@router.get("/{node_id}")
+def get_node(node_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    node = db.query(Node).filter(Node.id == node_id, Node.user_id == user_id).first()
     if not node:
         raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
     return {
@@ -84,13 +91,15 @@ def get_node(node_id: int, db: Session = Depends(get_db)):
         "data": node.data or {},
     }
 
-@router.post("/", dependencies=[Depends(verify_token)], status_code=status.HTTP_201_CREATED)
-def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
+@router.post("/", status_code=status.HTTP_201_CREATED)
+def create_node(node_in: NodeCreate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
     node = Node(
         title=node_in.title,
         description=node_in.description,
         completed=node_in.completed or False,
         data=node_in.data or {},
+        user_id=user_id,
     )
     db.add(node)
     db.commit()
@@ -103,9 +112,10 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
         "data": node.data or {},
     }
 
-@router.patch("/{node_id}", dependencies=[Depends(verify_token)])
-def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_db)):
-    node = db.query(Node).filter(Node.id == node_id).first()
+@router.patch("/{node_id}")
+def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    node = db.query(Node).filter(Node.id == node_id, Node.user_id == user_id).first()
     if not node:
         raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
 
@@ -130,21 +140,24 @@ def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_d
         "data": node.data or {},
     }
 
-@router.delete("/{node_id}", dependencies=[Depends(verify_token)])
-def delete_node(node_id: int, db: Session = Depends(get_db)):
-    node = db.query(Node).filter(Node.id == node_id).first()
+@router.delete("/{node_id}")
+def delete_node(node_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    node = db.query(Node).filter(Node.id == node_id, Node.user_id == user_id).first()
     if not node:
         raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
 
-    # Delete connected edges
-    db.query(Edge).filter((Edge.source_id == node_id) | (Edge.target_id == node_id)).delete()
+    db.query(Edge).filter((Edge.source_id == node_id) | (Edge.target_id == node_id)).delete(
+        synchronize_session=False
+    )
     db.delete(node)
     db.commit()
     return {"message": f"Node {node_id} deleted successfully"}
 
-@router.get("/edges/list", dependencies=[Depends(verify_token)])
-def get_edges(db: Session = Depends(get_db)):
-    edges = db.query(Edge).all()
+@router.get("/edges/list")
+def get_edges(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    edges = db.query(Edge).join(Node, Node.id == Edge.source_id).filter(Node.user_id == user_id).all()
     return [
         {
             "id": e.id,
@@ -155,12 +168,13 @@ def get_edges(db: Session = Depends(get_db)):
         for e in edges
     ]
 
-@router.post("/edges", dependencies=[Depends(verify_token)], status_code=status.HTTP_201_CREATED)
-def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db)):
-    source = db.query(Node).filter(Node.id == edge_in.source_id).first()
-    target = db.query(Node).filter(Node.id == edge_in.target_id).first()
+@router.post("/edges", status_code=status.HTTP_201_CREATED)
+def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    source = db.query(Node).filter(Node.id == edge_in.source_id, Node.user_id == user_id).first()
+    target = db.query(Node).filter(Node.id == edge_in.target_id, Node.user_id == user_id).first()
     if not source or not target:
-        raise HTTPException(status_code=400, detail="Source or target node does not exist")
+        raise HTTPException(status_code=400, detail="Source or target node does not exist or does not belong to user")
 
     edge = Edge(
         source_id=edge_in.source_id,
@@ -177,25 +191,27 @@ def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db)):
         "label": edge.label,
     }
 
-@router.delete("/edges/{edge_id}", dependencies=[Depends(verify_token)])
-def delete_edge(edge_id: int, db: Session = Depends(get_db)):
-    edge = db.query(Edge).filter(Edge.id == edge_id).first()
+@router.delete("/edges/{edge_id}")
+def delete_edge(edge_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    edge = db.query(Edge).join(Node, Node.id == Edge.source_id).filter(Edge.id == edge_id, Node.user_id == user_id).first()
     if not edge:
         raise HTTPException(status_code=404, detail=f"Edge {edge_id} not found")
     db.delete(edge)
     db.commit()
     return {"message": f"Edge {edge_id} deleted successfully"}
 
-@router.post("/ai/action", dependencies=[Depends(verify_token)])
-def handle_ai_action(req: AIActionRequest, db: Session = Depends(get_db)):
-    """AI Agent endpoint supporting task decomposition, schedule reasoning, and graph manipulation."""
+@router.post("/ai/action")
+def handle_ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
     if req.action == "decompose":
         node = None
         if req.node_id:
-            node = db.query(Node).filter(Node.id == req.node_id).first()
+            node = db.query(Node).filter(Node.id == req.node_id, Node.user_id == user_id).first()
+            if not node:
+                raise HTTPException(status_code=404, detail="Node not found")
         title = node.title if node else (req.message or "Target Goal")
 
-        # Create sequential subtasks
         subtasks_data = [
             {"title": f"Phase 1: Research & Scope {title}", "hours": 3, "step": 1},
             {"title": f"Phase 2: Core Implementation of {title}", "hours": 8, "step": 2},
@@ -208,54 +224,38 @@ def handle_ai_action(req: AIActionRequest, db: Session = Depends(get_db)):
                 title=item["title"],
                 description=f"Sequential step {item['step']} for '{title}'",
                 completed=False,
-                data={
-                    "node_type": "subtask",
-                    "parent_id": req.node_id,
-                    "estimated_hours": item["hours"],
-                    "step_order": item["step"],
-                },
+                data={"estHours": item["hours"]},
+                user_id=user_id,
             )
             db.add(st_node)
             db.commit()
             db.refresh(st_node)
-
-            # Link to parent
-            if req.node_id:
-                parent_edge = Edge(source_id=req.node_id, target_id=st_node.id, label="subtask")
-                db.add(parent_edge)
-
-            # Link sequential dependency
-            if prev_subtask_id:
-                seq_edge = Edge(source_id=prev_subtask_id, target_id=st_node.id, label="depends_on")
-                db.add(seq_edge)
-
-            db.commit()
-            prev_subtask_id = st_node.id
             created_subtasks.append({
                 "id": st_node.id,
                 "title": st_node.title,
-                "hours": item["hours"],
+                "description": st_node.description,
+                "data": st_node.data
             })
+            if prev_subtask_id:
+                edge = Edge(source_id=prev_subtask_id, target_id=st_node.id, label="next")
+                db.add(edge)
+                db.commit()
+            prev_subtask_id = st_node.id
+        
+        reply = f"Decomposed '{title}' into {len(created_subtasks)} sequential steps and wired them up."
+        return {"message": reply, "updates": {"nodes": created_subtasks}}
 
-        return {
-            "action": "decompose",
-            "message": f"Decomposed '{title}' into {len(created_subtasks)} sequential subtasks.",
-            "created_nodes": created_subtasks,
-        }
+    elif req.action == "chat":
+        reply = f"I am your Graph2Do AI. You said: {req.message}. I see you have a graph with {len(req.graph_context.get('nodes', []))} nodes."
+        return {"message": reply}
 
     elif req.action == "schedule":
-        return {
-            "action": "schedule",
-            "message": "Analyzed knowledge graph dependencies. Critical path identified without deadlocks.",
-            "recommendations": [
-                "Complete Phase 1 tasks before unblocking dependent subtasks.",
-                "Estimated completion: 15 hours total across active pipeline.",
-            ],
-        }
+        reply = "Scheduling logic stubbed. I would move nodes sequentially and update their start/end dates in 'data'."
+        return {"message": reply}
+
+    elif req.action == "prioritize":
+        reply = "Priority logic stubbed. I would label important paths in red."
+        return {"message": reply}
 
     else:
-        # Generic conversational AI response aware of context
-        return {
-            "action": "chat",
-            "reply": f"Understood: '{req.message}'. Node context: {req.node_id or 'General Graph'}. Ready to execute graph transformations.",
-        }
+        raise HTTPException(status_code=400, detail=f"Unknown AI action: {req.action}")
