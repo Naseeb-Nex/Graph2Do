@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -11,28 +12,28 @@ router = APIRouter()
 
 class NodeCreate(BaseModel):
     title: str
-    description: Optional[str] = None
-    completed: Optional[bool] = False
-    data: Optional[Dict[str, Any]] = None
-    graph_id: Optional[int] = None
+    description: str | None = None
+    completed: bool | None = False
+    data: dict[str, Any] | None = None
+    graph_id: int | None = None
 
 class NodeUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    completed: Optional[bool] = None
-    data: Optional[Dict[str, Any]] = None
+    title: str | None = None
+    description: str | None = None
+    completed: bool | None = None
+    data: dict[str, Any] | None = None
 
 class EdgeCreate(BaseModel):
     source_id: int
     target_id: int
-    label: Optional[str] = None
-    graph_id: Optional[int] = None
+    label: str | None = None
+    graph_id: int | None = None
 
 class AIActionRequest(BaseModel):
     action: str = Field(..., description="'decompose', 'chat', 'schedule', or 'prioritize'")
-    node_id: Optional[int] = None
-    message: Optional[str] = None
-    graph_context: Optional[Dict[str, Any]] = None
+    node_id: int | None = None
+    message: str | None = None
+    graph_context: dict[str, Any] | None = None
 
 def get_or_create_default_graph(db: Session, user_id: str) -> Graph:
     member = db.query(GraphMember).filter(GraphMember.user_id == user_id).first()
@@ -64,7 +65,7 @@ def check_graph_access(db: Session, graph_id: int, user_id: str) -> Graph:
         raise HTTPException(status_code=403, detail="Graph not found or access denied")
     return graph
 
-def get_user_graph_ids(db: Session, user_id: str) -> List[int]:
+def get_user_graph_ids(db: Session, user_id: str) -> list[int]:
     owner_graphs = db.query(Graph.id).filter(Graph.owner_id == user_id).all()
     member_graphs = db.query(GraphMember.graph_id).filter(GraphMember.user_id == user_id).all()
     g_ids = set([g[0] for g in owner_graphs] + [m[0] for m in member_graphs])
@@ -73,7 +74,7 @@ def get_user_graph_ids(db: Session, user_id: str) -> List[int]:
         g_ids = {def_graph.id}
     return list(g_ids)
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=list[dict[str, Any]])
 def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     graph_ids = get_user_graph_ids(db, user_id)

@@ -1,6 +1,7 @@
-from typing import Any, Optional
+from typing import Any
+
 import jwt
-from fastapi import APIRouter, HTTPException, Request, Security, Query, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from kinde_sdk import create_oauth_client
@@ -40,7 +41,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
 
 @router.get("/login")
 @limiter.limit("10/minute")
-def login(request: Request, connection_id: Optional[str] = Query(None), provider: Optional[str] = Query(None)):
+def login(request: Request, connection_id: str | None = Query(None), provider: str | None = Query(None)):
     params = {}
     conn = connection_id or provider
     if conn:

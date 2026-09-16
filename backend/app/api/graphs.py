@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,7 +14,7 @@ class GraphCreate(BaseModel):
     name: str
 
 class GraphUpdate(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
 
 def check_graph_access(db: Session, graph_id: int, user_id: str) -> Graph:
     graph = db.query(Graph).filter(Graph.id == graph_id).first()
@@ -29,13 +30,13 @@ def check_graph_access(db: Session, graph_id: int, user_id: str) -> Graph:
         raise HTTPException(status_code=403, detail="Graph not found or access denied")
     return graph
 
-def get_user_graph_ids(db: Session, user_id: str) -> List[int]:
+def get_user_graph_ids(db: Session, user_id: str) -> list[int]:
     owner_graphs = db.query(Graph.id).filter(Graph.owner_id == user_id).all()
     member_graphs = db.query(GraphMember.graph_id).filter(GraphMember.user_id == user_id).all()
     g_ids = set([g[0] for g in owner_graphs] + [m[0] for m in member_graphs])
     return list(g_ids)
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("/", response_model=list[dict[str, Any]])
 def list_graphs(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     g_ids = get_user_graph_ids(db, user_id)
@@ -170,7 +171,7 @@ def update_graph_settings(graph_id: int, updates: GraphUpdate, db: Session = Dep
     return {"id": graph.id, "name": graph.name, "owner_id": graph.owner_id}
 
 @router.post("/{graph_id}/copilot")
-def graph_copilot_action(graph_id: int, req: Dict[str, Any], db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def graph_copilot_action(graph_id: int, req: dict[str, Any], db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     check_graph_access(db, graph_id, user_id)
     nodes = db.query(Node).filter(Node.graph_id == graph_id).all()

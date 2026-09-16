@@ -1,16 +1,16 @@
 """Tests for auth guards, tenant isolation, and HTTP 403 cross-tenant enforcement."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
+from app.api.auth import get_current_user
+from app.db.database import Base, get_db
+from app.main import app
+from app.models.graph import GraphMember
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.main import app
-from app.db.database import Base, get_db
-from app.api.auth import get_current_user
-from app.models.graph import Graph, GraphMember
 
 engine = create_engine(
     "sqlite:///:memory:",

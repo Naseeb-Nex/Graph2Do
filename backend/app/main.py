@@ -1,14 +1,13 @@
-from fastapi import FastAPI, Depends, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.api.auth import router as auth_router
-from app.api.nodes import router as nodes_router
 from app.api.graphs import router as graphs_router
-from app.core.config import settings
+from app.api.nodes import router as nodes_router
 
 limiter = Limiter(key_func=get_remote_address)
 
