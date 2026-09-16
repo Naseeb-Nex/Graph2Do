@@ -1,14 +1,18 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, JSON
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String
+
 from app.db.database import Base
+
 
 class Node(Base):
     __tablename__ = "nodes"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
     title = Column(String, index=True)
     description = Column(String, nullable=True)
     completed = Column(Boolean, default=False)
     data = Column(JSON, nullable=True)
+
 
 class Edge(Base):
     __tablename__ = "edges"

@@ -1,20 +1,31 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from app.db.database import get_db
-from app.models.graph import Node, Edge
 from typing import Any
 
-from app.api.auth import verify_token
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.api.auth import get_current_user
+from app.db.database import get_db
+from app.models.graph import Node
 
 router = APIRouter()
 
-@router.get("/", response_model=Any, dependencies=[Depends(verify_token)])
-def get_nodes(db: Session = Depends(get_db)):
-    return db.query(Node).all()
 
-@router.post("/", dependencies=[Depends(verify_token)])
-def create_node(title: str, db: Session = Depends(get_db)):
-    node = Node(title=title)
+@router.get("/")
+def get_nodes(
+    db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)
+):
+    user_id = current_user["sub"]
+    return db.query(Node).filter(Node.user_id == user_id).all()
+
+
+@router.post("/")
+def create_node(
+    title: str,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
+    user_id = current_user["sub"]
+    node = Node(title=title, user_id=user_id)
     db.add(node)
     db.commit()
     db.refresh(node)
