@@ -3,8 +3,8 @@ import { GraphNode, GraphEdge } from '../types/graph'
 const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || ''
 const AUTH_TOKEN =
   typeof window !== 'undefined' && window.localStorage
-    ? window.localStorage.getItem('graph2do_token') || 'mock-token'
-    : 'mock-token'
+    ? window.localStorage.getItem('graph2do_token') || ''
+    : ''
 
 export interface FullGraphResponse {
   nodes: GraphNode[]

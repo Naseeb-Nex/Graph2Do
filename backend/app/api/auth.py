@@ -24,8 +24,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
     token = credentials.credentials
     # In a real app, you would fetch the JWKS from Kinde and verify using the key.
     try:
-        if token in ("mock-token", "test-token", "dev-token"):
-            return {"sub": "mock-user-123", "email": "test@graph2do.app"}
         # We perform basic decoding without signature verification for now,
         # but the boundary is enforced by this dependency.
         payload = jwt.decode(token, options={"verify_signature": False})
