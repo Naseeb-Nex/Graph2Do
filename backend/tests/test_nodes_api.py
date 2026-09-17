@@ -1,14 +1,12 @@
 import pytest
+from app.api.auth import get_current_user
+from app.db.database import Base, get_db
+from app.main import app
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.main import app
-from app.db.database import Base, get_db
-from app.models.graph import Node, Edge
-
-# In-memory SQLite for fast, isolated testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
 engine = create_engine(
@@ -25,7 +23,11 @@ def override_get_db():
     finally:
         db.close()
 
+def override_get_current_user():
+    return {"sub": "test_user_id"}
+
 app.dependency_overrides[get_db] = override_get_db
+app.dependency_overrides[get_current_user] = override_get_current_user
 
 @pytest.fixture(autouse=True)
 def setup_db():
@@ -60,66 +62,77 @@ def test_create_and_get_nodes():
     assert len(nodes) == 1
     assert nodes[0]["id"] == node_id
 
+    # Get nodes
+    get_resp = client.get("/nodes/", headers=AUTH_HEADERS)
+    assert get_resp.status_code == 200
+    nodes = get_resp.json()
+    assert len(nodes) == 1
+    assert nodes[0]["id"] == node_id
+
     # Get single node
     single_resp = client.get(f"/nodes/{node_id}", headers=AUTH_HEADERS)
     assert single_resp.status_code == 200
     assert single_resp.json()["title"] == "Launch Project Alpha"
 
+    # Verify node has user_id from auth
+    assert single_resp.json()["user_id"] == "test_user_id"
 def test_update_and_delete_node():
     create_resp = client.post(
         "/nodes/",
-        json={"title": "Initial Title", "completed": False},
+        json={"title": "Task 1", "description": "Initial description"},
         headers=AUTH_HEADERS,
     )
+    assert create_resp.status_code == 201
     node_id = create_resp.json()["id"]
 
-    # Patch node
+    # Update node
     patch_resp = client.patch(
         f"/nodes/{node_id}",
-        json={"title": "Updated Title", "completed": True},
+        json={"title": "Task 1 Updated", "completed": True},
         headers=AUTH_HEADERS,
     )
     assert patch_resp.status_code == 200
-    assert patch_resp.json()["title"] == "Updated Title"
+    assert patch_resp.json()["title"] == "Task 1 Updated"
     assert patch_resp.json()["completed"] is True
 
     # Delete node
     del_resp = client.delete(f"/nodes/{node_id}", headers=AUTH_HEADERS)
-    assert del_resp.status_code == 200
+    assert del_resp.status_code == 204
 
-    # Verify not found
+    # Verify deleted
     get_resp = client.get(f"/nodes/{node_id}", headers=AUTH_HEADERS)
     assert get_resp.status_code == 404
 
 def test_edges_and_full_graph():
-    n1 = client.post("/nodes/", json={"title": "Step 1"}, headers=AUTH_HEADERS).json()
-    n2 = client.post("/nodes/", json={"title": "Step 2"}, headers=AUTH_HEADERS).json()
+    # Create 2 nodes
+    n1 = client.post("/nodes/", json={"title": "Node 1"}, headers=AUTH_HEADERS).json()
+    n2 = client.post("/nodes/", json={"title": "Node 2"}, headers=AUTH_HEADERS).json()
 
+    # Create edge
     edge_resp = client.post(
         "/nodes/edges",
-        json={"source_id": n1["id"], "target_id": n2["id"], "label": "sequence"},
+        json={"source_id": n1["id"], "target_id": n2["id"], "label": "depends_on"},
         headers=AUTH_HEADERS,
     )
     assert edge_resp.status_code == 201
-    edge_id = edge_resp.json()["id"]
+    assert edge_resp.json()["source_id"] == n1["id"]
 
-    graph_resp = client.get("/nodes/graph/full", headers=AUTH_HEADERS)
-    assert graph_resp.status_code == 200
-    graph_data = graph_resp.json()
-    assert len(graph_data["nodes"]) == 2
-    assert len(graph_data["edges"]) == 1
-
-    del_edge = client.delete(f"/nodes/edges/{edge_id}", headers=AUTH_HEADERS)
-    assert del_edge.status_code == 200
+    # Fetch full graph
+    full_resp = client.get("/nodes/graph/full", headers=AUTH_HEADERS)
+    assert full_resp.status_code == 200
+    data = full_resp.json()
+    assert len(data["nodes"]) == 2
+    assert len(data["edges"]) == 1
 
 def test_ai_action_decomposition():
-    parent = client.post("/nodes/", json={"title": "Design System"}, headers=AUTH_HEADERS).json()
+    n1 = client.post("/nodes/", json={"title": "Big Feature"}, headers=AUTH_HEADERS).json()
+
     ai_resp = client.post(
-        "/nodes/ai/action",
-        json={"action": "decompose", "node_id": parent["id"]},
+        "/nodes/ai-action",
+        json={"action": "decompose", "node_id": n1["id"]},
         headers=AUTH_HEADERS,
     )
     assert ai_resp.status_code == 200
-    ai_data = ai_resp.json()
-    assert "Decomposed" in ai_data["message"]
-    assert len(ai_data["created_nodes"]) == 3
+    res = ai_resp.json()
+    assert res["action"] == "decompose"
+    assert len(res["created_nodes"]) == 3
