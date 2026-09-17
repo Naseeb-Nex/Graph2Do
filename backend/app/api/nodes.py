@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.api.auth import get_current_user
 from app.db.database import get_db
 from app.models.graph import Edge, Graph, GraphMember, Node
 from app.core.layout import assign_positions
+from app.core.websockets import manager
 
 router = APIRouter()
 
@@ -143,7 +144,7 @@ def get_node(node_id: int, db: Session = Depends(get_db), current_user: Any = De
     }
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_node(node_in: NodeCreate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def create_node(node_in: NodeCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     graph_id = node_in.graph_id
     if not graph_id:
@@ -163,6 +164,7 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db), current_user
     db.add(node)
     db.commit()
     db.refresh(node)
+    background_tasks.add_task(manager.broadcast, {'type': 'graph_updated'})
     return {
         "id": node.id,
         "title": node.title,
@@ -174,7 +176,7 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db), current_user
     }
 
 @router.patch("/{node_id}")
-def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def update_node(node_id: int, update_in: NodeUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -191,6 +193,7 @@ def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_d
         setattr(node, field, val)
     db.commit()
     db.refresh(node)
+    background_tasks.add_task(manager.broadcast, {'type': 'graph_updated'})
     return {
         "id": node.id,
         "title": node.title,
@@ -202,7 +205,7 @@ def update_node(node_id: int, update_in: NodeUpdate, db: Session = Depends(get_d
     }
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def delete_node(node_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -215,7 +218,7 @@ def delete_node(node_id: int, db: Session = Depends(get_db), current_user: Any =
     db.commit()
 
 @router.post("/edges", status_code=status.HTTP_201_CREATED)
-def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def create_edge(edge_in: EdgeCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     source_node = db.query(Node).filter(Node.id == edge_in.source_id).first()
     target_node = db.query(Node).filter(Node.id == edge_in.target_id).first()
@@ -239,6 +242,7 @@ def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db), current_user
     db.add(edge)
     db.commit()
     db.refresh(edge)
+    background_tasks.add_task(manager.broadcast, {'type': 'graph_updated'})
     return {
         "id": edge.id,
         "source_id": edge.source_id,
@@ -248,7 +252,7 @@ def create_edge(edge_in: EdgeCreate, db: Session = Depends(get_db), current_user
     }
 
 @router.post("/ai-action")
-def ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def ai_action(req: AIActionRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     user_id = current_user["sub"]
     graph_ids = get_user_graph_ids(db, user_id)
 
@@ -296,6 +300,7 @@ def ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user:
             db.commit()
             created.append({"id": sub.id, "title": sub.title, "hours": 2})
 
+        background_tasks.add_task(manager.broadcast, {'type': 'graph_updated'})
         return {
             "action": "decompose",
             "message": f"Decomposed '{target_node.title}' into {len(created)} subtasks.",

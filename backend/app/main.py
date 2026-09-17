@@ -8,6 +8,7 @@ from slowapi.util import get_remote_address
 from app.api.auth import router as auth_router
 from app.api.graphs import router as graphs_router
 from app.api.nodes import router as nodes_router
+from app.api.ws import router as ws_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -44,6 +45,7 @@ app.include_router(nodes_router, prefix="/nodes", tags=["Nodes"])
 app.include_router(nodes_router, prefix="/api/nodes", tags=["Nodes"])
 app.include_router(graphs_router, prefix="/graphs", tags=["Graphs"])
 app.include_router(graphs_router, prefix="/api/graphs", tags=["Graphs"])
+app.include_router(ws_router, tags=["Websockets"])
 
 @app.get("/")
 @limiter.limit("10/minute")

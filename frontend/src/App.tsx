@@ -18,7 +18,20 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
 
-  // Initialize with API connection check
+  const loadGraph = async () => {
+    try {
+      const data = await api.fetchGraph()
+      if (data.nodes && data.nodes.length > 0) {
+        setNodes(data.nodes)
+        setEdges(data.edges)
+      }
+      setIsLiveConnected(true)
+    } catch {
+      // Keep local state on error
+    }
+  }
+
+  // Initialize with API connection check and WebSockets
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -33,20 +46,22 @@ export const App: React.FC = () => {
       }
     }
     checkConnection()
-  }, [])
 
-  const loadGraph = async () => {
-    try {
-      const data = await api.fetchGraph()
-      if (data.nodes && data.nodes.length > 0) {
-        setNodes(data.nodes)
-        setEdges(data.edges)
+    // Setup WebSocket
+    const wsUrl = import.meta.env?.VITE_API_URL?.replace('http', 'ws') || 'ws://127.0.0.1:8000'
+    const ws = new WebSocket(`${wsUrl}/ws`)
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'graph_updated') {
+          loadGraph()
+        }
+      } catch (e) {
+        console.error('WS parse error', e)
       }
-      setIsLiveConnected(true)
-    } catch {
-      // Keep local state on error
     }
-  }
+    return () => ws.close()
+  }, [])
 
   const refreshGraph = useCallback(async () => {
     if (isLiveConnected) {
