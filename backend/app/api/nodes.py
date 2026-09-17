@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.db.database import get_db
 from app.models.graph import Edge, Graph, GraphMember, Node
+from app.core.layout import assign_positions
 
 router = APIRouter()
 
@@ -269,7 +270,8 @@ def ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user:
             f"Implement: {target_node.title}",
             f"Test & Verify: {target_node.title}",
         ]
-        created = []
+        
+        subs = []
         for title in subtask_titles:
             sub = Node(
                 title=title,
@@ -278,6 +280,14 @@ def ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user:
                 user_id=user_id,
                 graph_id=target_node.graph_id,
             )
+            subs.append(sub)
+
+        existing_nodes = db.query(Node).filter(Node.graph_id == target_node.graph_id).all()
+        base_pos = (target_node.data or {}).get("position", {})
+        assign_positions(subs, existing_nodes, base_pos.get("x", 0), base_pos.get("y", 0))
+
+        created = []
+        for sub in subs:
             db.add(sub)
             db.commit()
             db.refresh(sub)
@@ -320,3 +330,59 @@ def ai_action(req: AIActionRequest, db: Session = Depends(get_db), current_user:
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown AI action: {req.action}")
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+def create_nodes_bulk(nodes_in: list[NodeCreate], db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    
+    if not nodes_in:
+        return []
+        
+    created = []
+    # group by graph_id
+    graph_map = {}
+    for nin in nodes_in:
+        gid = nin.graph_id
+        if not gid:
+            g = get_or_create_default_graph(db, user_id)
+            gid = g.id
+        else:
+            check_graph_access(db, gid, user_id)
+        
+        node = Node(
+            title=nin.title,
+            description=nin.description,
+            completed=nin.completed or False,
+            data=nin.data or {},
+            user_id=user_id,
+            graph_id=gid,
+        )
+        graph_map.setdefault(gid, []).append(node)
+        created.append(node)
+        
+    for gid, new_nodes in graph_map.items():
+        existing = db.query(Node).filter(Node.graph_id == gid).all()
+        # assign position for nodes without it
+        nodes_to_position = [n for n in new_nodes if "position" not in (n.data or {})]
+        if nodes_to_position:
+            assign_positions(nodes_to_position, existing)
+            
+    for node in created:
+        db.add(node)
+    db.commit()
+    
+    for node in created:
+        db.refresh(node)
+        
+    return [
+        {
+            "id": n.id,
+            "title": n.title,
+            "description": n.description,
+            "completed": n.completed,
+            "data": n.data or {},
+            "user_id": n.user_id,
+            "graph_id": n.graph_id,
+        }
+        for n in created
+    ]

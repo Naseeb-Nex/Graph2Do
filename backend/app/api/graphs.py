@@ -185,3 +185,63 @@ def graph_copilot_action(graph_id: int, req: dict[str, Any], db: Session = Depen
         "indexed_edges_count": len(edges),
         "reply": f"AI Copilot indexed graph #{graph_id} ({len(nodes)} nodes, {len(edges)} edges). Message: '{message}'",
     }
+
+@router.post("/{graph_id}/import", status_code=status.HTTP_201_CREATED)
+def import_graph_data(graph_id: int, payload: dict[str, Any], db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    check_graph_access(db, graph_id, user_id)
+    
+    nodes_data = payload.get("nodes", [])
+    edges_data = payload.get("edges", [])
+    
+    new_nodes = []
+    # Using NodeCreate loosely, assuming payload is dicts
+    for nd in nodes_data:
+        node = Node(
+            title=nd.get("title", "Untitled"),
+            description=nd.get("description"),
+            completed=nd.get("completed", False),
+            data=nd.get("data", {}),
+            user_id=user_id,
+            graph_id=graph_id,
+        )
+        new_nodes.append(node)
+        
+    existing = db.query(Node).filter(Node.graph_id == graph_id).all()
+    # Find ones without position
+    nodes_to_position = [n for n in new_nodes if "position" not in (n.data or {})]
+    if nodes_to_position:
+        from app.core.layout import assign_positions
+        assign_positions(nodes_to_position, existing)
+        
+    for n in new_nodes:
+        db.add(n)
+        
+    db.commit()
+    for n in new_nodes:
+        db.refresh(n)
+        
+    node_id_map = {nd.get("id"): n.id for nd, n in zip(nodes_data, new_nodes) if nd.get("id")}
+    
+    new_edges = []
+    for ed in edges_data:
+        # map old frontend IDs to new DB IDs if provided
+        src = node_id_map.get(ed.get("source_id"), ed.get("source_id"))
+        tgt = node_id_map.get(ed.get("target_id"), ed.get("target_id"))
+        
+        if src and tgt:
+            edge = Edge(
+                source_id=src,
+                target_id=tgt,
+                label=ed.get("label"),
+                graph_id=graph_id
+            )
+            db.add(edge)
+            new_edges.append(edge)
+            
+    db.commit()
+    
+    return {
+        "message": f"Imported {len(new_nodes)} nodes and {len(new_edges)} edges",
+        "nodes": [{"id": n.id, "title": n.title, "data": n.data} for n in new_nodes],
+    }
