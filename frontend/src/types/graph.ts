@@ -17,6 +17,7 @@ export interface GraphNode {
   blockers?: string[]
   dependencies?: string[]
   data?: Record<string, any>
+  graphId?: number
 }
 
 export interface GraphEdge {

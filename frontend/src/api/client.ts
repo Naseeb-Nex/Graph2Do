@@ -23,6 +23,10 @@ class ApiClient {
   private token: string = AUTH_TOKEN
   private isConnected: boolean = false
 
+  getToken(): string {
+    return this.token
+  }
+
   setToken(token: string) {
     this.token = token
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -88,6 +92,7 @@ class ApiClient {
       blockers: n.data?.blockers || [],
       dependencies: n.data?.dependencies || [],
       data: n.data,
+      graphId: n.graph_id,
     }))
 
     const edges: GraphEdge[] = raw.edges.map((e) => ({

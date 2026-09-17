@@ -18,7 +18,9 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
 
-  const loadGraph = async () => {
+  const [activeWsConnections, setActiveWsConnections] = useState<Record<number, WebSocket>>({})
+
+  const loadGraph = useCallback(async () => {
     try {
       const data = await api.fetchGraph()
       if (data.nodes && data.nodes.length > 0) {
@@ -29,9 +31,9 @@ export const App: React.FC = () => {
     } catch {
       // Keep local state on error
     }
-  }
+  }, [])
 
-  // Initialize with API connection check and WebSockets
+  // Initialize with API connection check
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -46,22 +48,56 @@ export const App: React.FC = () => {
       }
     }
     checkConnection()
+  }, [])
 
-    // Setup WebSocket
+  // Re-establish WebSockets when graph IDs change
+  useEffect(() => {
+    if (!isLiveConnected) return
+
+    const graphIds = Array.from(new Set(nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)))
     const wsUrl = import.meta.env?.VITE_API_URL?.replace('http', 'ws') || 'ws://127.0.0.1:8000'
-    const ws = new WebSocket(`${wsUrl}/ws`)
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'graph_updated') {
-          loadGraph()
+    const token = api.getToken()
+    
+    // Create new connections if missing
+    const newConns = { ...activeWsConnections }
+    let changed = false
+    
+    for (const gid of graphIds) {
+      if (!newConns[gid] && token) {
+        const ws = new WebSocket(`${wsUrl}/ws/${gid}?token=${token}`)
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === 'graph_updated') {
+              loadGraph()
+            }
+          } catch (e) {
+            console.error('WS parse error', e)
+          }
         }
-      } catch (e) {
-        console.error('WS parse error', e)
+        newConns[gid] = ws
+        changed = true
       }
     }
-    return () => ws.close()
-  }, [])
+    
+    // We do not eagerly prune old connections here since nodes could briefly disappear,
+    // but in a fuller implementation we might close ones no longer needed.
+    
+    if (changed) {
+      setActiveWsConnections(newConns)
+    }
+    
+    return () => {
+       // We keep them alive unless component unmounts entirely
+    }
+  }, [nodes, isLiveConnected])
+
+  useEffect(() => {
+    return () => {
+      Object.values(activeWsConnections).forEach(ws => ws.close())
+    }
+  }, [activeWsConnections])
+
 
   const refreshGraph = useCallback(async () => {
     if (isLiveConnected) {

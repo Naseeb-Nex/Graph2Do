@@ -9,6 +9,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 import jwt
 
+from fastapi.concurrency import run_in_threadpool
 from app.core.websockets import manager
 from app.api.auth import jwks_client, settings
 from app.api.nodes import check_graph_access
@@ -25,7 +26,9 @@ async def websocket_endpoint(
     db: Session = Depends(get_db),
 ):
     try:
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        signing_key = await run_in_threadpool(
+            jwks_client.get_signing_key_from_jwt, token
+        )
         payload = jwt.decode(
             token,
             signing_key.key,
@@ -38,7 +41,7 @@ async def websocket_endpoint(
         return
 
     try:
-        check_graph_access(db, graph_id, user_id)
+        await run_in_threadpool(check_graph_access, db, graph_id, user_id)
     except HTTPException:
         await websocket.close(code=1008)
         return
