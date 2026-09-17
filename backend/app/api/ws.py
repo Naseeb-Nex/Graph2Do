@@ -1,18 +1,18 @@
+import jwt
 from fastapi import (
     APIRouter,
-    WebSocket,
-    WebSocketDisconnect,
-    Query,
     Depends,
     HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
 )
-from sqlalchemy.orm import Session
-import jwt
-
 from fastapi.concurrency import run_in_threadpool
-from app.core.websockets import manager
+from sqlalchemy.orm import Session
+
 from app.api.auth import jwks_client, settings
 from app.api.nodes import check_graph_access
+from app.core.websockets import manager
 from app.db.database import get_db
 
 router = APIRouter()
