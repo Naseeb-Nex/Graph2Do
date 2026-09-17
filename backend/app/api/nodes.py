@@ -77,7 +77,10 @@ def get_user_graph_ids(db: Session, user_id: str) -> list[int]:
     return list(g_ids)
 
 @router.get("/", response_model=list[dict[str, Any]])
-def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def get_nodes(
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     graph_ids = get_user_graph_ids(db, user_id)
     nodes = db.query(Node).filter(Node.graph_id.in_(graph_ids)).all()
@@ -95,7 +98,10 @@ def get_nodes(db: Session = Depends(get_db), current_user: Any = Depends(get_cur
     ]
 
 @router.get("/graph/full")
-def get_full_graph(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def get_full_graph(
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     graph_ids = get_user_graph_ids(db, user_id)
     nodes = db.query(Node).filter(Node.graph_id.in_(graph_ids)).all()
@@ -127,7 +133,11 @@ def get_full_graph(db: Session = Depends(get_db), current_user: Any = Depends(ge
     }
 
 @router.get("/{node_id}")
-def get_node(node_id: int, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def get_node(
+    node_id: int,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -144,7 +154,12 @@ def get_node(node_id: int, db: Session = Depends(get_db), current_user: Any = De
     }
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_node(node_in: NodeCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def create_node(
+    node_in: NodeCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     graph_id = node_in.graph_id
     if not graph_id:
@@ -176,7 +191,13 @@ def create_node(node_in: NodeCreate, background_tasks: BackgroundTasks, db: Sess
     }
 
 @router.patch("/{node_id}")
-def update_node(node_id: int, update_in: NodeUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def update_node(
+    node_id: int,
+    update_in: NodeUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -205,7 +226,12 @@ def update_node(node_id: int, update_in: NodeUpdate, background_tasks: Backgroun
     }
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def delete_node(
+    node_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -218,7 +244,12 @@ def delete_node(node_id: int, background_tasks: BackgroundTasks, db: Session = D
     db.commit()
 
 @router.post("/edges", status_code=status.HTTP_201_CREATED)
-def create_edge(edge_in: EdgeCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def create_edge(
+    edge_in: EdgeCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     source_node = db.query(Node).filter(Node.id == edge_in.source_id).first()
     target_node = db.query(Node).filter(Node.id == edge_in.target_id).first()
@@ -252,7 +283,12 @@ def create_edge(edge_in: EdgeCreate, background_tasks: BackgroundTasks, db: Sess
     }
 
 @router.post("/ai-action")
-def ai_action(req: AIActionRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+def ai_action(
+    req: AIActionRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user),
+):
     user_id = current_user["sub"]
     graph_ids = get_user_graph_ids(db, user_id)
 

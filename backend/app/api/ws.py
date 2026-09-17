@@ -1,13 +1,51 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    WebSocket,
+    WebSocketDisconnect,
+    Query,
+    Depends,
+    HTTPException,
+)
+from sqlalchemy.orm import Session
+import jwt
+
 from app.core.websockets import manager
+from app.api.auth import jwks_client, settings
+from app.api.nodes import check_graph_access
+from app.db.database import get_db
 
 router = APIRouter()
 
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+
+@router.websocket("/ws/{graph_id}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    graph_id: int,
+    token: str = Query(..., description="JWT token for Auth"),
+    db: Session = Depends(get_db),
+):
+    try:
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=settings.kinde_client_id,
+        )
+        user_id = payload["sub"]
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        check_graph_access(db, graph_id, user_id)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
+    await manager.connect(websocket, graph_id)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(websocket, graph_id)

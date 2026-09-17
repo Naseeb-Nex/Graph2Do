@@ -31,9 +31,12 @@ app.dependency_overrides[get_current_user] = override_get_current_user
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    # Don't clear in case other tests rely on it, but setting it overrides any clear
 
 client = TestClient(app)
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
