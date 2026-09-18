@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useKindeAuth } from '@kinde-oss/kinde-auth-react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { AIChatPanel } from './components/AIChatPanel'
 import { NodeModal } from './components/NodeModal'
@@ -8,6 +9,14 @@ import { GraphNode, GraphEdge, ChatMessage } from './types/graph'
 import { INITIAL_NODES, INITIAL_EDGES } from './utils/initialData'
 
 export const App: React.FC = () => {
+  const { getToken, isAuthenticated, isLoading, login } = useKindeAuth()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      login()
+    }
+  }, [isLoading, isAuthenticated, login])
+
   const [nodes, setNodes] = useState<GraphNode[]>(INITIAL_NODES)
   const [edges, setEdges] = useState<GraphEdge[]>(INITIAL_EDGES)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -18,22 +27,25 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
 
-  // Initialize with API connection check
-  useEffect(() => {
+useEffect(() => {
     const checkConnection = async () => {
+      if (isLoading) return
       try {
+        if (isAuthenticated) {
+          const token = await getToken()
+          if (token) api.setToken(token)
+        }
         const connected = await api.checkHealth()
         setIsLiveConnected(connected)
         if (connected) {
           await loadGraph()
         }
       } catch {
-        // Fall back to local state
         setIsLiveConnected(false)
       }
     }
     checkConnection()
-  }, [])
+  }, [isLoading, isAuthenticated, getToken])
 
   const loadGraph = async () => {
     try {
@@ -380,6 +392,14 @@ export const App: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setNodeToEdit(null)
+  }
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-slate-400">Redirecting to login...</div>
+      </div>
+    )
   }
 
   return (

@@ -4,7 +4,7 @@
 - **Backend:** FastAPI, synchronous setup using `uvicorn`, `psycopg2-binary`, and `SQLAlchemy`.
 - **Database:** PostgreSQL initialized via Alembic.
 - **Environment:** Run `backend/venv` and activate it.
-- **Auth:** Kinde Python SDK with fast API. Routes prefixed with `/auth`.
+- **Auth:** Kinde Python SDK with FastAPI for backend (routes prefixed with `/auth` and `/api/auth`), and `@kinde-oss/kinde-auth-react` for frontend.
 
 ## Maintaining this file
 
