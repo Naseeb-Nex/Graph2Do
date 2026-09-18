@@ -137,18 +137,12 @@ export const TopNav: React.FC<TopNavProps> = ({
               <Wifi className="w-3 h-3 text-emerald-400" />
               <span className="hidden sm:inline">Backend Live</span>
             </>
-          ) : (
-            <>
-              <WifiOff className="w-3 h-3 text-slate-500" />
-              <span className="hidden sm:inline">Local Sync</span>
-            </>
           )}
         </div>
 
         {/* User profile avatar */}
-        
         <div className="flex items-center gap-2">
-          {isAuthenticated ? (
+          {isAuthenticated && (
             <div className="flex items-center gap-2">
               <div className="text-xs text-slate-300 mr-2">{(user as any)?.given_name || (user as any)?.givenName || user?.email}</div>
               {user?.picture ? (
@@ -162,20 +156,8 @@ export const TopNav: React.FC<TopNavProps> = ({
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button onClick={() => login()} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-200 transition-colors flex items-center gap-1.5">
-                <LogIn className="w-3 h-3" />
-                Login
-              </button>
-              <button onClick={() => register()} className="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-md text-white transition-colors">
-                Sign Up
-              </button>
-            </div>
           )}
         </div>
-
-      </div>
     </header>
   )
 }
