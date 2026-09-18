@@ -1,4 +1,18 @@
-import { describe, it, expect } from 'vitest'
+
+import { describe, it, expect, vi } from 'vitest'
+vi.mock('@kinde-oss/kinde-auth-react', () => ({
+  useKindeAuth: () => ({
+    getToken: async () => 'test-token',
+    isAuthenticated: true,
+    isLoading: false,
+    user: { given_name: 'Test', email: 'test@example.com' },
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+  }),
+  KindeProvider: ({children}: any) => <div>{children}</div>
+}))
+
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import App from '../App'
 

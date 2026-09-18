@@ -1,5 +1,6 @@
 import React from 'react'
 import { GraphNode } from '../types/graph'
+import { useKindeAuth } from '@kinde-oss/kinde-auth-react'
 import {
   Network,
   CheckCircle2,
@@ -11,6 +12,8 @@ import {
   WifiOff,
   User,
   Filter,
+  LogOut,
+  LogIn
 } from 'lucide-react'
 
 interface TopNavProps {
@@ -28,6 +31,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onFilterChange,
   onOpenCreateModal,
 }) => {
+  const { login, register, logout, isAuthenticated, user } = useKindeAuth()
   const totalNodes = nodes.length
   const completedNodes = nodes.filter((n) => n.completed || n.status === 'completed').length
   const completionRate = totalNodes > 0 ? Math.round((completedNodes / totalNodes) * 100) : 0
@@ -142,9 +146,35 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
 
         {/* User profile avatar */}
-        <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
-          <User className="w-4 h-4" />
+        
+        <div className="flex items-center gap-2">
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-slate-300 mr-2">{(user as any)?.given_name || (user as any)?.givenName || user?.email}</div>
+              {user?.picture ? (
+                <img src={user.picture} alt="avatar" className="w-7 h-7 rounded-full" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
+                  <User className="w-4 h-4" />
+                </div>
+              )}
+              <button onClick={() => logout()} className="p-1.5 hover:bg-slate-800 rounded-md text-slate-400 hover:text-rose-400" title="Logout">
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={() => login()} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-200 transition-colors flex items-center gap-1.5">
+                <LogIn className="w-3 h-3" />
+                Login
+              </button>
+              <button onClick={() => register()} className="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-md text-white transition-colors">
+                Sign Up
+              </button>
+            </div>
+          )}
         </div>
+
       </div>
     </header>
   )
