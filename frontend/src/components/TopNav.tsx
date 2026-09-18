@@ -12,8 +12,7 @@ import {
   WifiOff,
   User,
   Filter,
-  LogOut,
-  LogIn
+  LogOut
 } from 'lucide-react'
 
 interface TopNavProps {
@@ -31,7 +30,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onFilterChange,
   onOpenCreateModal,
 }) => {
-  const { login, register, logout, isAuthenticated, user } = useKindeAuth()
+  const { logout, isAuthenticated, user } = useKindeAuth()
   const totalNodes = nodes.length
   const completedNodes = nodes.filter((n) => n.completed || n.status === 'completed').length
   const completionRate = totalNodes > 0 ? Math.round((completedNodes / totalNodes) * 100) : 0
@@ -137,6 +136,11 @@ export const TopNav: React.FC<TopNavProps> = ({
               <Wifi className="w-3 h-3 text-emerald-400" />
               <span className="hidden sm:inline">Backend Live</span>
             </>
+          ) : (
+            <>
+              <WifiOff className="w-3 h-3 text-slate-500" />
+              <span className="hidden sm:inline">Local Sync</span>
+            </>
           )}
         </div>
 
@@ -158,6 +162,8 @@ export const TopNav: React.FC<TopNavProps> = ({
             </div>
           )}
         </div>
+
+      </div>
     </header>
   )
 }
