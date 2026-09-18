@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { AIChatPanel } from './components/AIChatPanel'
 import { NodeModal } from './components/NodeModal'
@@ -18,7 +18,7 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
 
-  const [activeWsConnections, setActiveWsConnections] = useState<Record<number, WebSocket>>({})
+  const wsConnectionsRef = useRef<Record<number, WebSocket>>({})
 
   const loadGraph = useCallback(async () => {
     try {
@@ -50,20 +50,15 @@ export const App: React.FC = () => {
     checkConnection()
   }, [])
 
-  // Re-establish WebSockets when graph IDs change
   useEffect(() => {
     if (!isLiveConnected) return
 
     const graphIds = Array.from(new Set(nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)))
     const wsUrl = import.meta.env?.VITE_API_URL?.replace('http', 'ws') || 'ws://127.0.0.1:8000'
     const token = api.getToken()
-    
-    // Create new connections if missing
-    const newConns = { ...activeWsConnections }
-    let changed = false
-    
+
     for (const gid of graphIds) {
-      if (!newConns[gid] && token) {
+      if (!wsConnectionsRef.current[gid] && token) {
         const ws = new WebSocket(`${wsUrl}/ws/${gid}?token=${token}`)
         ws.onmessage = (event) => {
           try {
@@ -75,28 +70,24 @@ export const App: React.FC = () => {
             console.error('WS parse error', e)
           }
         }
-        newConns[gid] = ws
-        changed = true
+        wsConnectionsRef.current[gid] = ws
       }
     }
-    
-    // We do not eagerly prune old connections here since nodes could briefly disappear,
-    // but in a fuller implementation we might close ones no longer needed.
-    
-    if (changed) {
-      setActiveWsConnections(newConns)
+
+    for (const gid of Object.keys(wsConnectionsRef.current).map(Number)) {
+      if (!graphIds.includes(gid)) {
+        wsConnectionsRef.current[gid].close()
+        delete wsConnectionsRef.current[gid]
+      }
     }
-    
-    return () => {
-       // We keep them alive unless component unmounts entirely
-    }
-  }, [nodes, isLiveConnected])
+  }, [nodes, isLiveConnected, loadGraph])
 
   useEffect(() => {
     return () => {
-      Object.values(activeWsConnections).forEach(ws => ws.close())
+      Object.values(wsConnectionsRef.current).forEach(ws => ws.close())
+      wsConnectionsRef.current = {}
     }
-  }, [activeWsConnections])
+  }, [])
 
 
   const refreshGraph = useCallback(async () => {
