@@ -1,4 +1,6 @@
 from typing import Any
+
+
 def assign_positions(new_nodes: list[Any], existing_nodes: list[Any], base_x: float = 0, base_y: float = 0, spacing_x: float = 250, spacing_y: float = 150):
     occupied = set()
     for n in existing_nodes:

@@ -1,5 +1,6 @@
-import pytest
 from app.core.layout import assign_positions
+
+
 class MockNode:
     def __init__(self, x=None, y=None):
         if x is not None and y is not None:
