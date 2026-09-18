@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useKindeAuth } from '@kinde-oss/kinde-auth-react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { AIChatPanel } from './components/AIChatPanel'
 import { NodeModal } from './components/NodeModal'
@@ -8,6 +9,14 @@ import { GraphNode, GraphEdge, ChatMessage } from './types/graph'
 import { INITIAL_NODES, INITIAL_EDGES } from './utils/initialData'
 
 export const App: React.FC = () => {
+  const { getToken, isAuthenticated, isLoading, login } = useKindeAuth()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      login()
+    }
+  }, [isLoading, isAuthenticated, login])
+
   const [nodes, setNodes] = useState<GraphNode[]>(INITIAL_NODES)
   const [edges, setEdges] = useState<GraphEdge[]>(INITIAL_EDGES)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -17,10 +26,29 @@ export const App: React.FC = () => {
   const [nodeToEdit, setNodeToEdit] = useState<GraphNode | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
-
   const wsConnectionsRef = useRef<Record<number, WebSocket>>({})
 
-  const loadGraph = useCallback(async () => {
+useEffect(() => {
+    const checkConnection = async () => {
+      if (isLoading) return
+      try {
+        if (isAuthenticated) {
+          const token = await getToken()
+          if (token) api.setToken(token)
+        }
+        const connected = await api.checkHealth()
+        setIsLiveConnected(connected)
+        if (connected) {
+          await loadGraph()
+        }
+      } catch {
+        setIsLiveConnected(false)
+      }
+    }
+    checkConnection()
+  }, [isLoading, isAuthenticated, getToken])
+
+  const loadGraph = async () => {
     try {
       const data = await api.fetchGraph()
       if (data.nodes && data.nodes.length > 0) {
@@ -31,30 +59,14 @@ export const App: React.FC = () => {
     } catch {
       // Keep local state on error
     }
-  }, [])
+  }
 
-  // Initialize with API connection check
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const connected = await api.checkHealth()
-        setIsLiveConnected(connected)
-        if (connected) {
-          await loadGraph()
-        }
-      } catch {
-        // Fall back to local state
-        setIsLiveConnected(false)
-      }
-    }
-    checkConnection()
-  }, [])
 
+  // Re-establish WebSockets when graph IDs change
   useEffect(() => {
     if (!isLiveConnected) return
-
     const graphIds = Array.from(new Set(nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)))
-    const wsUrl = import.meta.env?.VITE_API_URL?.replace('http', 'ws') || 'ws://127.0.0.1:8000'
+    const wsUrl = import.meta.env?.VITE_API_URL?.replace("http", "ws") || "ws://127.0.0.1:8000"
     const token = api.getToken()
 
     for (const gid of graphIds) {
@@ -63,11 +75,11 @@ export const App: React.FC = () => {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            if (data.type === 'graph_updated') {
+            if (data.type === "graph_updated") {
               loadGraph()
             }
           } catch (e) {
-            console.error('WS parse error', e)
+            console.error("WS parse error", e)
           }
         }
         wsConnectionsRef.current[gid] = ws
@@ -88,7 +100,6 @@ export const App: React.FC = () => {
       wsConnectionsRef.current = {}
     }
   }, [])
-
 
   const refreshGraph = useCallback(async () => {
     if (isLiveConnected) {
@@ -422,6 +433,14 @@ export const App: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setNodeToEdit(null)
+  }
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-slate-400">Redirecting to login...</div>
+      </div>
+    )
   }
 
   return (
