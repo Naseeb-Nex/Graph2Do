@@ -14,7 +14,10 @@ class ConnectionManager:
         self.active_connections[graph_id].append(websocket)
 
     def disconnect(self, websocket: WebSocket, graph_id: int):
-        if graph_id in self.active_connections and websocket in self.active_connections[graph_id]:
+        if (
+            graph_id in self.active_connections
+            and websocket in self.active_connections[graph_id]
+        ):
             self.active_connections[graph_id].remove(websocket)
             if not self.active_connections[graph_id]:
                 del self.active_connections[graph_id]
@@ -27,5 +30,6 @@ class ConnectionManager:
                     await connection.send_text(text)
                 except Exception:
                     self.disconnect(connection, graph_id)
+
 
 manager = ConnectionManager()

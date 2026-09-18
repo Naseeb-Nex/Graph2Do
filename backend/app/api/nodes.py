@@ -371,7 +371,7 @@ def ai_action(
             f"Implement: {target_node.title}",
             f"Test & Verify: {target_node.title}",
         ]
-        
+
         subs = []
         for title in subtask_titles:
             sub = Node(
@@ -387,9 +387,13 @@ def ai_action(
             )
             subs.append(sub)
 
-        existing_nodes = db.query(Node).filter(Node.graph_id == target_node.graph_id).all()
+        existing_nodes = (
+            db.query(Node).filter(Node.graph_id == target_node.graph_id).all()
+        )
         base_pos = (target_node.data or {}).get("position", {})
-        assign_positions(subs, existing_nodes, base_pos.get("x", 0), base_pos.get("y", 0))
+        assign_positions(
+            subs, existing_nodes, base_pos.get("x", 0), base_pos.get("y", 0)
+        )
 
         created = []
         for sub in subs:
@@ -493,7 +497,7 @@ def create_nodes_bulk(
         ]
         if nodes_to_position:
             assign_positions(nodes_to_position, existing)
-            
+
         background_tasks.add_task(
             manager.broadcast, {"type": "graph_updated"}, gid
         )

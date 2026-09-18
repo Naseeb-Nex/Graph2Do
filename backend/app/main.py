@@ -17,6 +17,7 @@ app = FastAPI(title="Graph2Do API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -24,12 +25,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"error": exc.detail},
     )
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"error": "An unexpected error occurred."},
     )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +49,7 @@ app.include_router(nodes_router, prefix="/api/nodes", tags=["Nodes"])
 app.include_router(graphs_router, prefix="/graphs", tags=["Graphs"])
 app.include_router(graphs_router, prefix="/api/graphs", tags=["Graphs"])
 app.include_router(ws_router, tags=["Websockets"])
+
 
 @app.get("/")
 @limiter.limit("10/minute")
