@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useKindeAuth } from '@kinde-oss/kinde-auth-react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { AIChatPanel } from './components/AIChatPanel'
@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [nodeToEdit, setNodeToEdit] = useState<GraphNode | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLiveConnected, setIsLiveConnected] = useState(false)
+  const wsConnectionsRef = useRef<Record<number, WebSocket>>({})
 
 useEffect(() => {
     const checkConnection = async () => {
@@ -59,6 +60,46 @@ useEffect(() => {
       // Keep local state on error
     }
   }
+
+
+  // Re-establish WebSockets when graph IDs change
+  useEffect(() => {
+    if (!isLiveConnected) return
+    const graphIds = Array.from(new Set(nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)))
+    const wsUrl = import.meta.env?.VITE_API_URL?.replace("http", "ws") || "ws://127.0.0.1:8000"
+    const token = api.getToken()
+
+    for (const gid of graphIds) {
+      if (!wsConnectionsRef.current[gid] && token) {
+        const ws = new WebSocket(`${wsUrl}/ws/${gid}?token=${token}`)
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === "graph_updated") {
+              loadGraph()
+            }
+          } catch (e) {
+            console.error("WS parse error", e)
+          }
+        }
+        wsConnectionsRef.current[gid] = ws
+      }
+    }
+
+    for (const gid of Object.keys(wsConnectionsRef.current).map(Number)) {
+      if (!graphIds.includes(gid)) {
+        wsConnectionsRef.current[gid].close()
+        delete wsConnectionsRef.current[gid]
+      }
+    }
+  }, [nodes, isLiveConnected, loadGraph])
+
+  useEffect(() => {
+    return () => {
+      Object.values(wsConnectionsRef.current).forEach(ws => ws.close())
+      wsConnectionsRef.current = {}
+    }
+  }, [])
 
   const refreshGraph = useCallback(async () => {
     if (isLiveConnected) {
