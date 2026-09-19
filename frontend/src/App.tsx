@@ -222,8 +222,8 @@ export const App: React.FC = () => {
     }
   }
 
-  const handleDecomposeNode = async (nodeId: string) => {
-    const target = nodes.find(n => n.id === nodeId)
+  const handleDecomposeNode = async (nodeOrId: GraphNode | string) => {
+    const target = typeof nodeOrId === 'string' ? nodes.find(n => n.id === nodeOrId) : nodeOrId
     if (!target) return
     const sub1: GraphNode = {
       id: `sub-${Date.now()}-1`,
@@ -296,6 +296,14 @@ export const App: React.FC = () => {
     setNodeToEdit(null)
   }
 
+  const handleClearContext = () => {
+    setSelectedNodeId(null)
+  }
+
+  const handleClearMessages = () => {
+    setMessages([])
+  }
+
   if (isLoading) return null
   if (!isAuthenticated) return <LandingPage />
 
@@ -334,6 +342,8 @@ export const App: React.FC = () => {
             onDecomposeNode={handleDecomposeNode}
             onCompleteNode={handleCompleteNode}
             onAnalyzeSchedule={handleAnalyzeSchedule}
+            onClearContext={handleClearContext}
+            onClearMessages={handleClearMessages}
           />
         </div>
       </div>
