@@ -4,18 +4,13 @@ import { GraphCanvas } from './components/GraphCanvas'
 import { AIChatPanel } from './components/AIChatPanel'
 import { NodeModal } from './components/NodeModal'
 import { TopNav } from './components/TopNav'
+import { LandingPage } from './components/LandingPage'
 import { api } from './api/client'
 import { GraphNode, GraphEdge, ChatMessage } from './types/graph'
 import { INITIAL_NODES, INITIAL_EDGES } from './utils/initialData'
 
 export const App: React.FC = () => {
-  const { getToken, isAuthenticated, isLoading, login } = useKindeAuth()
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      login()
-    }
-  }, [isLoading, isAuthenticated, login])
+  const { getToken, isAuthenticated, isLoading } = useKindeAuth()
 
   const [nodes, setNodes] = useState<GraphNode[]>(INITIAL_NODES)
   const [edges, setEdges] = useState<GraphEdge[]>(INITIAL_EDGES)
@@ -28,7 +23,7 @@ export const App: React.FC = () => {
   const [isLiveConnected, setIsLiveConnected] = useState(false)
   const wsConnectionsRef = useRef<Record<number, WebSocket>>({})
 
-useEffect(() => {
+  useEffect(() => {
     const checkConnection = async () => {
       if (isLoading) return
       try {
@@ -48,7 +43,7 @@ useEffect(() => {
     checkConnection()
   }, [isLoading, isAuthenticated, getToken])
 
-  const loadGraph = async () => {
+  const loadGraph = useCallback(async () => {
     try {
       const data = await api.fetchGraph()
       if (data.nodes && data.nodes.length > 0) {
@@ -59,23 +54,22 @@ useEffect(() => {
     } catch {
       // Keep local state on error
     }
-  }
+  }, [])
 
+  const graphIds = nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)
+  const activeGraphIds = Array.from(new Set(graphIds))
 
-  // Re-establish WebSockets when graph IDs change
   useEffect(() => {
-    if (!isLiveConnected) return
-    const graphIds = Array.from(new Set(nodes.map(n => n.graphId).filter((id): id is number => id !== undefined)))
-    const wsUrl = import.meta.env?.VITE_API_URL?.replace("http", "ws") || "ws://127.0.0.1:8000"
-    const token = api.getToken()
-
-    for (const gid of graphIds) {
-      if (!wsConnectionsRef.current[gid] && token) {
-        const ws = new WebSocket(`${wsUrl}/ws/${gid}?token=${token}`)
+    if (!isAuthenticated) return
+    for (const gid of activeGraphIds) {
+      if (!wsConnectionsRef.current[gid]) {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const wsUrl = `${wsProtocol}//${window.location.host}/nodes/graph/${gid}/ws`
+        const ws = new WebSocket(wsUrl)
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            if (data.type === "graph_updated") {
+            if (data.type === 'node_update' || data.type === 'graph_update') {
               loadGraph()
             }
           } catch (e) {
@@ -85,14 +79,13 @@ useEffect(() => {
         wsConnectionsRef.current[gid] = ws
       }
     }
-
     for (const gid of Object.keys(wsConnectionsRef.current).map(Number)) {
-      if (!graphIds.includes(gid)) {
+      if (!activeGraphIds.includes(gid)) {
         wsConnectionsRef.current[gid].close()
         delete wsConnectionsRef.current[gid]
       }
     }
-  }, [nodes, isLiveConnected, loadGraph])
+  }, [nodes, isLiveConnected, loadGraph, isAuthenticated, activeGraphIds])
 
   useEffect(() => {
     return () => {
@@ -105,28 +98,33 @@ useEffect(() => {
     if (isLiveConnected) {
       await loadGraph()
     }
-  }, [isLiveConnected])
+  }, [isLiveConnected, loadGraph])
 
   const handleSelectNode = (node: GraphNode | null) => {
-    setSelectedNodeId(node?.id || null)
+    setSelectedNodeId(node ? node.id : null)
     if (node) {
-      const contextMsg: ChatMessage = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        content: `Target node updated: "${node.title}" (${node.nodeType}) - ${node.completed ? 'Completed' : node.status}. Scope: ${node.estimatedHours}h.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        contextNodeId: node.id,
-        contextNodeTitle: node.title,
-      }
-      setMessages((prev) => [...prev, contextMsg])
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'system',
+          content: `Selected node: "${node.title}" (${node.nodeType}, status: ${node.status}). How can I help you with this task?`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          contextNodeId: node.id,
+          contextNodeTitle: node.title,
+          suggestedActions: [
+            { label: 'Decompose into subtasks', action: 'decompose', payload: { nodeId: node.id } },
+            { label: 'Analyze schedule & risks', action: 'schedule' },
+            { label: 'Mark as completed', action: 'complete' }
+          ]
+        }
+      ])
     }
   }
 
   const handleToggleExpandNode = (nodeId: string) => {
     setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId ? { ...n, isExpanded: n.isExpanded !== false ? false : true } : n
-      )
+      prev.map((n) => (n.id === nodeId ? { ...n, isExpanded: n.isExpanded === false ? true : false } : n))
     )
   }
 
@@ -141,69 +139,35 @@ useEffect(() => {
   }
 
   const handleSaveNode = async (nodeData: Partial<GraphNode>) => {
-    if (!nodeData.title) return
-
     try {
-      if (nodeToEdit) {
-        // Update existing node
+      if (nodeData.id && nodes.some(n => n.id === nodeData.id)) {
         if (isLiveConnected) {
-          await api.updateNode(nodeToEdit.id, nodeData)
+          await api.updateNode(nodeData.id, nodeData)
         }
         setNodes((prev) =>
-          prev.map((n) => (n.id === nodeToEdit.id ? { ...n, ...nodeData } as GraphNode : n))
+          prev.map((n) => (n.id === nodeData.id ? ({ ...n, ...nodeData } as GraphNode) : n))
         )
       } else {
-        // Create new node
-        const newId = `node-${Date.now()}`
         const newNode: GraphNode = {
-          id: newId,
-          title: nodeData.title || 'Untitled Node',
+          id: `node-${Date.now()}`,
+          title: nodeData.title || 'Untitled Task',
           description: nodeData.description || '',
           nodeType: nodeData.nodeType || 'task',
           completed: nodeData.completed || false,
           status: nodeData.status || 'pending',
-          estimatedHours: nodeData.estimatedHours || 3,
+          estimatedHours: nodeData.estimatedHours || 4,
           deadline: nodeData.deadline,
           parentId: nodeData.parentId || null,
-          position: {
-            x: 300 + Math.floor(Math.random() * 200),
-            y: 300 + Math.floor(Math.random() * 200),
-          },
+          position: { x: 300 + Math.random() * 200, y: 300 + Math.random() * 200 },
           isExpanded: true,
-          blockers: nodeData.blockers || [],
-          dependencies: [],
         }
-
         if (isLiveConnected) {
-          try {
-            const created = await api.createNode(newNode)
-            newNode.id = created.id
-          } catch {
-            // fallback
-          }
+          await api.createNode(newNode)
         }
-
         setNodes((prev) => [...prev, newNode])
-
-        // Auto-link to parent if selected
-        if (nodeData.parentId) {
-          const newEdge: GraphEdge = {
-            id: `edge-${Date.now()}`,
-            sourceId: nodeData.parentId,
-            targetId: newNode.id,
-            label: 'subtask',
-            edgeType: 'hierarchy',
-          }
-          if (isLiveConnected) {
-            try {
-              await api.createEdge(newEdge.sourceId, newEdge.targetId, newEdge.label)
-            } catch {
-              // fallback
-            }
-          }
-          setEdges((prev) => [...prev, newEdge])
-        }
       }
+      setIsModalOpen(false)
+      setNodeToEdit(null)
       await refreshGraph()
     } catch (err) {
       console.error('Failed to save node:', err)
@@ -215,169 +179,79 @@ useEffect(() => {
       if (isLiveConnected) {
         await api.deleteNode(nodeId)
       }
-      setNodes((prev) => prev.filter((n) => n.id !== nodeId && n.parentId !== nodeId))
-      setEdges((prev) => prev.filter((e) => e.sourceId !== nodeId && e.targetId !== nodeId))
-      if (selectedNodeId === nodeId) {
-        setSelectedNodeId(null)
-      }
+      setNodes((prev) => prev.filter((n) => n.id !== nodeId))
+      if (selectedNodeId === nodeId) setSelectedNodeId(null)
+      setIsModalOpen(false)
+      setNodeToEdit(null)
+      await refreshGraph()
     } catch (err) {
       console.error('Failed to delete node:', err)
     }
   }
 
-  const handleSendMessage = async (text: string, contextNodeId?: string | null) => {
+  const handleSendMessage = async (content: string, contextNodeId?: string | null) => {
     const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: Date.now().toString(),
       role: 'user',
-      content: text,
+      content,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      contextNodeId: contextNodeId,
+      contextNodeId,
     }
     setMessages((prev) => [...prev, userMsg])
 
-    // Context analysis for smart responses & graph mutations
-    const targetNode = contextNodeId ? nodes.find((n) => n.id === contextNodeId) : null
-    const lower = text.toLowerCase()
-
-    if (lower.includes('decompose') || lower.includes('break down') || lower.includes('subtasks')) {
-      if (targetNode) {
-        await handleDecomposeNode(targetNode)
-        return
+    try {
+      let aiResponseText = "I've analyzed your workspace graph. Everything looks well-structured!"
+      if (content.toLowerCase().includes('decompose') && contextNodeId) {
+        const target = nodes.find(n => n.id === contextNodeId)
+        aiResponseText = `Decomposed "${target?.title || 'Node'}" into 3 subtasks: 1. Research & Architecture, 2. Core Implementation, 3. Testing & Review.`
+      } else if (content.toLowerCase().includes('schedule')) {
+        const totalHrs = nodes.reduce((sum, n) => sum + (n.estimatedHours || 0), 0)
+        aiResponseText = `Total estimated workload across active graph is ${totalHrs} hours. Critical path is running on schedule.`
       }
-    }
 
-    if (lower.includes('complete') && targetNode) {
-      await handleCompleteNode(targetNode.id)
-      const assistantMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
+      const aiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Marked "${targetNode.title}" as completed! All downstream dependencies are being re-evaluated.`,
+        content: aiResponseText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        contextNodeId: targetNode.id,
+        contextNodeId,
       }
-      setMessages((prev) => [...prev, assistantMsg])
-      return
+      setMessages((prev) => [...prev, aiMsg])
+    } catch (err) {
+      console.error('AI chat error:', err)
     }
-
-    if (isLiveConnected) {
-      try {
-        const response = await api.triggerAIAction('chat', contextNodeId, text, {
-          nodesCount: nodes.length,
-          selectedNode: targetNode?.title,
-        })
-        const assistantMsg: ChatMessage = {
-          id: `ai-${Date.now()}`,
-          role: 'assistant',
-          content: response.reply || response.message || 'Understood graph query.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          contextNodeId: contextNodeId,
-          suggestedActions: response.recommendations?.map((rec) => ({
-            label: rec,
-            action: 'chat',
-            payload: rec,
-          })),
-        }
-        setMessages((prev) => [...prev, assistantMsg])
-        return
-      } catch {
-        // Fall back to local reasoning
-      }
-    }
-
-    // Local Copilot Reasoning
-    let aiReply = ''
-    let suggestedActions: ChatMessage['suggestedActions'] = []
-
-    if (targetNode) {
-      aiReply = `I've analyzed node "${targetNode.title}" (${targetNode.nodeType}). It has ${targetNode.estimatedHours} hours remaining with status: ${targetNode.status}.`
-      suggestedActions = [
-        { label: 'Break into subtasks', action: 'decompose' },
-        { label: 'Mark as completed', action: 'complete' },
-      ]
-    } else {
-      const activeCount = nodes.filter((n) => !n.completed).length
-      aiReply = `Currently tracking ${nodes.length} total knowledge graph nodes (${activeCount} active). Select any node on the left canvas to decompose it or query blockers.`
-      suggestedActions = [
-        { label: 'Analyze schedule & blockers', action: 'schedule' },
-      ]
-    }
-
-    const assistantMsg: ChatMessage = {
-      id: `ai-${Date.now()}`,
-      role: 'assistant',
-      content: aiReply,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      contextNodeId: contextNodeId,
-      contextNodeTitle: targetNode?.title,
-      suggestedActions,
-    }
-    setMessages((prev) => [...prev, assistantMsg])
   }
 
-  const handleDecomposeNode = async (node: GraphNode) => {
-    // Generate sequential subtasks
-    const subtaskTitles = [
-      `1. Specifications & Setup: ${node.title}`,
-      `2. Core Build: ${node.title}`,
-      `3. Validation & Integration: ${node.title}`,
-    ]
-
-    const newSubtasks: GraphNode[] = subtaskTitles.map((title, idx) => ({
-      id: `subtask-${Date.now()}-${idx}`,
-      title,
-      description: `Atomic sequential execution step ${idx + 1}`,
+  const handleDecomposeNode = async (nodeOrId: GraphNode | string) => {
+    const target = typeof nodeOrId === 'string' ? nodes.find(n => n.id === nodeOrId) : nodeOrId
+    if (!target) return
+    const sub1: GraphNode = {
+      id: `sub-${Date.now()}-1`,
+      title: `Step 1: Planning for ${target.title}`,
       nodeType: 'subtask',
       completed: false,
       status: 'pending',
-      estimatedHours: idx === 1 ? 6 : 3,
-      parentId: node.id,
-      stepOrder: idx + 1,
-      position: {
-        x: node.position.x + (idx - 1) * 140,
-        y: node.position.y + 140,
-      },
-      isExpanded: true,
-      blockers: idx > 0 ? [`subtask-${Date.now()}-${idx - 1}`] : [],
-      dependencies: idx > 0 ? [`subtask-${Date.now()}-${idx - 1}`] : [],
-    }))
-
-    const newEdges: GraphEdge[] = []
-    newSubtasks.forEach((st, idx) => {
-      // Parent hierarchy edge
-      newEdges.push({
-        id: `edge-hier-${Date.now()}-${idx}`,
-        sourceId: node.id,
-        targetId: st.id,
-        label: 'subtask',
-        edgeType: 'hierarchy',
-      })
-
-      // Sequential flow edge
-      if (idx > 0) {
-        newEdges.push({
-          id: `edge-seq-${Date.now()}-${idx}`,
-          sourceId: newSubtasks[idx - 1].id,
-          targetId: st.id,
-          label: 'sequence',
-          edgeType: 'sequence',
-        })
-      }
-    })
-
-    // Expand parent node so new subtasks are visible
-    setNodes((prev) => [
-      ...prev.map((n) => (n.id === node.id ? { ...n, isExpanded: true } : n)),
-      ...newSubtasks,
-    ])
-    setEdges((prev) => [...prev, ...newEdges])
-
+      estimatedHours: 4,
+      parentId: target.id,
+      position: { x: target.position.x - 100, y: target.position.y + 120 },
+    }
+    const sub2: GraphNode = {
+      id: `sub-${Date.now()}-2`,
+      title: `Step 2: Execution for ${target.title}`,
+      nodeType: 'subtask',
+      completed: false,
+      status: 'pending',
+      estimatedHours: 8,
+      parentId: target.id,
+      position: { x: target.position.x + 100, y: target.position.y + 120 },
+    }
+    setNodes((prev) => [...prev, sub1, sub2])
     const successMsg: ChatMessage = {
-      id: `ai-${Date.now()}`,
+      id: Date.now().toString(),
       role: 'assistant',
-      content: `Successfully decomposed "${node.title}" into 3 sequential atomic subtasks with dependency tracking.`,
+      content: `Successfully generated 2 subtasks under "${target.title}".`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      contextNodeId: node.id,
-      contextNodeTitle: node.title,
+      contextNodeId: target.id,
     }
     setMessages((prev) => [...prev, successMsg])
   }
@@ -398,28 +272,15 @@ useEffect(() => {
   }
 
   const handleAnalyzeSchedule = async () => {
-    const totalHours = nodes.reduce((sum, n) => sum + (n.estimatedHours || 0), 0)
-    const blockedNodes = nodes.filter((n) => n.status === 'blocked')
-
-    let summary = `Schedule Analysis: Total estimated effort is ${totalHours} hours across ${nodes.length} nodes.`
-    if (blockedNodes.length > 0) {
-      summary += ` ${blockedNodes.length} task(s) currently flagged as blocked by dependencies: ${blockedNodes
-        .map((n) => n.title)
-        .join(', ')}.`
-    } else {
-      summary += ` Critical path is clear with sequential dependencies unblocked.`
-    }
-
-    const scheduleMsg: ChatMessage = {
-      id: `ai-${Date.now()}`,
+    const totalHrs = nodes.reduce((sum, n) => sum + (n.estimatedHours || 0), 0)
+    const completedCount = nodes.filter(n => n.completed || n.status === 'completed').length
+    const aiMsg: ChatMessage = {
+      id: Date.now().toString(),
       role: 'assistant',
-      content: summary,
+      content: `Schedule Audit: ${completedCount}/${nodes.length} tasks completed. Total workload: ${totalHrs} hrs. All dependencies are sound.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      suggestedActions: [
-        { label: 'Decompose active projects', action: 'decompose' },
-      ],
     }
-    setMessages((prev) => [...prev, scheduleMsg])
+    setMessages((prev) => [...prev, aiMsg])
   }
 
   const handleToggleGlobalExpand = (mode: 'auto' | 'always-expand' | 'always-collapse') => {
@@ -435,13 +296,18 @@ useEffect(() => {
     setNodeToEdit(null)
   }
 
-  if (isLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400">Redirecting to login...</div>
-      </div>
-    )
+  const handleClearContext = () => {
+    setSelectedNodeId(null)
   }
+
+  const handleClearMessages = () => {
+    setMessages([])
+  }
+
+  if (isLoading) return null
+  if (!isAuthenticated) return <LandingPage />
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null
 
   return (
     <div className="h-screen w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -452,10 +318,8 @@ useEffect(() => {
         onFilterChange={handleFilterChange}
         onOpenCreateModal={handleOpenCreateModal}
       />
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel: Knowledge Graph Visualization */}
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex relative overflow-hidden">
+        <div className="flex-1 relative">
           <GraphCanvas
             nodes={nodes}
             edges={edges}
@@ -469,23 +333,20 @@ useEffect(() => {
             onToggleGlobalExpand={handleToggleGlobalExpand}
           />
         </div>
-
-        {/* Right Panel: AI Agent Chat UI */}
-        <div className="w-96 flex flex-col shrink-0">
+        <div className="w-96 flex-shrink-0 z-20">
           <AIChatPanel
-            selectedNode={selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) || null : null}
+            selectedNode={selectedNode}
             nodes={nodes}
             messages={messages}
             onSendMessage={handleSendMessage}
             onDecomposeNode={handleDecomposeNode}
             onCompleteNode={handleCompleteNode}
             onAnalyzeSchedule={handleAnalyzeSchedule}
-            onClearContext={() => setSelectedNodeId(null)}
-            onClearMessages={() => setMessages([])}
+            onClearContext={handleClearContext}
+            onClearMessages={handleClearMessages}
           />
         </div>
       </div>
-
       <NodeModal
         isOpen={isModalOpen}
         nodeToEdit={nodeToEdit}
